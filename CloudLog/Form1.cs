@@ -14,6 +14,7 @@ using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Runtime.Serialization;
 using Newtonsoft.Json;
+using System.Data.SqlClient;
 
 namespace CloudLog
 {
@@ -86,6 +87,56 @@ namespace CloudLog
                 {
                     MessageBox.Show(string.Format("{0} logs will be updated to the system", logs.Count()));
 
+                    SaveToDatabase(logs);
+                }
+            }
+        }
+
+        private void SaveToDatabase(List<LogViewModel> logs)
+        {
+            foreach (var item in logs)
+            {
+                try
+                {
+                    SqlConnection connection = null;
+                    SqlDataReader dataReader = null;
+                    DataTable dataTable = new DataTable();
+
+                    try
+                    {
+                        connection = new SqlConnection("Server=(local);DataBase=Northwind;Integrated Security=SSPI");
+                        connection.Open();
+
+                        SqlCommand command = new SqlCommand("CustOrderHist", connection);
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.Add(new SqlParameter("@CustomerID", "data here"));
+
+                        dataTable.Load(command.ExecuteReader());
+                        dataReader = command.ExecuteReader();
+                       
+                        while (dataReader.Read())
+                        {
+                            Console.WriteLine(
+                                "Product: {0,-35} Total: {1,2}",
+                                dataReader["ProductName"],
+                                dataReader["Total"]);
+                            
+                        }
+                    }
+                    finally
+                    {
+                        if (connection != null)
+                        {
+                            connection.Close();
+                        }
+                        if (dataReader != null)
+                        {
+                            dataReader.Close();
+                        }
+                    }
+                }
+                catch (Exception)
+                {
 
                 }
             }
