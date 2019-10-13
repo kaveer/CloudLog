@@ -94,6 +94,8 @@ namespace CloudLog
 
         private void SaveToDatabase(List<LogViewModel> logs)
         {
+            int updateCount;
+
             foreach (var item in logs)
             {
                 try
@@ -104,12 +106,15 @@ namespace CloudLog
 
                     try
                     {
-                        connection = new SqlConnection("Server=(local);DataBase=Northwind;Integrated Security=SSPI");
+                        connection = new SqlConnection(@"Data Source=DESKTOP-3KHTJ6N\SQLEXPRESS;Initial Catalog=CloudLog;Integrated Security=True");
                         connection.Open();
 
-                        SqlCommand command = new SqlCommand("CustOrderHist", connection);
-                        command.CommandType = CommandType.StoredProcedure;
-                        command.Parameters.Add(new SqlParameter("@CustomerID", "data here"));
+                        SqlCommand command = new SqlCommand("SaveLog", connection)
+                        {
+                            CommandType = CommandType.StoredProcedure
+                        };
+                        command.Parameters.Add(new SqlParameter("@insertId", item.InsertId));
+                        command.Parameters.Add(new SqlParameter("@logName", item.LogName));
 
                         dataTable.Load(command.ExecuteReader());
                         dataReader = command.ExecuteReader();
@@ -118,8 +123,8 @@ namespace CloudLog
                         {
                             Console.WriteLine(
                                 "Product: {0,-35} Total: {1,2}",
-                                dataReader["ProductName"],
-                                dataReader["Total"]);
+                                dataReader["insertId"],
+                                dataReader["logName"]);
                             
                         }
                     }
@@ -140,6 +145,8 @@ namespace CloudLog
 
                 }
             }
+
+            MessageBox.Show("{0} logs updated");
         }
 
         private void converted(byte[] protoPayloadValue)
