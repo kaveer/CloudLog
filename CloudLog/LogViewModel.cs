@@ -10,6 +10,7 @@ namespace CloudLog
 {
     public class LogViewModel
     {
+        public int LogId { get; set; }
         public string InsertId { get; internal set; }
         public string LogName { get; internal set; }
         public string ProtoPayloadTypeUrl { get; internal set; }
@@ -18,5 +19,6 @@ namespace CloudLog
         public Dictionary<string, string> Resource { get; internal set; }
         public string Severity { get; internal set; }
         public Timestamp LogTimestamp { get; internal set; }
+        public bool IsNew { get; set; }
     }
 }

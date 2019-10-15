@@ -20,15 +20,21 @@ namespace CloudLog
 {
     public partial class Form1 : Form
     {
+        int addedCount;
+
+        string connectionString;
+        string projectId;
+        string resourceName;
+        string filter; 
+        string orderBy;
+
         public Form1()
         {
             string value = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
 
             InitializeComponent();
-            string projectId = "resolute-world-253406";
-            string resourceName = string.Format("projects/{0}", projectId);
-            string filter = "resource.type = \"gcs_bucket\"";
-            string orderBy = "timestamp desc";
+
+            Configuration();
 
             List<LogViewModel> logs = new List<LogViewModel>();
             Dictionary<string, string> resources = new Dictionary<string, string>();
@@ -49,24 +55,23 @@ namespace CloudLog
                 {
                     try
                     {
-                        LogViewModel log = new LogViewModel();
-                        log.InsertId = item.InsertId;
-                        log.LogName = item.LogName;
-                        log.ProtoPayloadTypeUrl = item.ProtoPayload.TypeUrl;
-                        log.ProtoPayloadValue = item.ProtoPayload.Value.ToBase64();
-                        log.RecieveTimestamp = item.ReceiveTimestamp;
-                        log.Resource = resources;
-                        log.Severity = item.Severity.ToString();
-                        log.LogTimestamp = item.Timestamp;
+                        LogViewModel log = new LogViewModel
+                        {
+                            InsertId = item.InsertId,
+                            LogName = item.LogName,
+                            ProtoPayloadTypeUrl = item.ProtoPayload.TypeUrl,
+                            ProtoPayloadValue = item.ProtoPayload.Value.ToBase64(),
+                            RecieveTimestamp = item.ReceiveTimestamp,
+                            Resource = resources,
+                            Severity = item.Severity.ToString(),
+                            LogTimestamp = item.Timestamp
+                        };
 
                         foreach (var resourceItem in item.Resource.Labels)
                         {
                             try
                             {
-                                resources = new Dictionary<string, string>
-                                {
-                                    { resourceItem.Key, resourceItem.Value }
-                                };
+                                resources.Add(resourceItem.Key, resourceItem.Value);
                             }
                             catch (Exception)
                             {
@@ -76,6 +81,11 @@ namespace CloudLog
                         }
 
                         logs.Add(log);
+
+                        if (logs.Count() == 10)
+                        {
+                            break;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -85,48 +95,68 @@ namespace CloudLog
 
                 if (logs.Count() > 0)
                 {
-                    MessageBox.Show(string.Format("{0} logs will be updated to the system", logs.Count()));
-
+                    MessageBox.Show(string.Format("{0} logs will be processed to the system", logs.Count()));
                     SaveToDatabase(logs);
                 }
             }
         }
 
+        private void Configuration()
+        {
+            connectionString = @"Data Source=DESKTOP-3KHTJ6N\SQLEXPRESS;Initial Catalog=CloudLog;Integrated Security=True";
+            projectId = "resolute-world-253406";
+            resourceName = string.Format("projects/{0}", projectId);
+            filter = "resource.type = \"gcs_bucket\"";
+            orderBy = "timestamp desc";
+        }
+
         private void SaveToDatabase(List<LogViewModel> logs)
         {
-            int updateCount;
-
             foreach (var item in logs)
             {
                 try
                 {
+                    LogViewModel log = SaveLogs(item);
+                    if (log.IsNew)
+                    {
+                        SaveLogDetails(item);
+                        SaveLogResources(item);
+                    }
+                    if (log.LogId > 0 && log.IsNew)
+                    {
+                        addedCount++;
+                    }
+                }
+                catch (Exception)
+                {
+                    MessageBox.Show(string.Format("error while saving log id {0}", item.InsertId));
+                }
+            }
+
+            MessageBox.Show(string.Format("{0} logs added", addedCount));
+        }
+
+        private void SaveLogResources(LogViewModel item)
+        {
+            if (item.Resource != null || item.Resource?.Count > 0)
+            {
+                foreach (var resource in item.Resource)
+                {
                     SqlConnection connection = null;
-                    SqlDataReader dataReader = null;
                     DataTable dataTable = new DataTable();
 
                     try
                     {
-                        connection = new SqlConnection(@"Data Source=DESKTOP-3KHTJ6N\SQLEXPRESS;Initial Catalog=CloudLog;Integrated Security=True");
+                        connection = new SqlConnection(connectionString);
                         connection.Open();
 
-                        SqlCommand command = new SqlCommand("SaveLog", connection)
+                        SqlCommand command = new SqlCommand("SaveLogResource", connection)
                         {
                             CommandType = CommandType.StoredProcedure
                         };
-                        command.Parameters.Add(new SqlParameter("@insertId", item.InsertId));
-                        command.Parameters.Add(new SqlParameter("@logName", item.LogName));
+                        command.Parameters.Add(new SqlParameter("@insertId", item.InsertId.Trim()));
 
                         dataTable.Load(command.ExecuteReader());
-                        dataReader = command.ExecuteReader();
-                       
-                        while (dataReader.Read())
-                        {
-                            Console.WriteLine(
-                                "Product: {0,-35} Total: {1,2}",
-                                dataReader["insertId"],
-                                dataReader["logName"]);
-                            
-                        }
                     }
                     finally
                     {
@@ -134,19 +164,80 @@ namespace CloudLog
                         {
                             connection.Close();
                         }
-                        if (dataReader != null)
-                        {
-                            dataReader.Close();
-                        }
                     }
                 }
-                catch (Exception)
-                {
+            }
+        }
 
+        private void SaveLogDetails(LogViewModel item)
+        {
+            SqlConnection connection = null;
+            DataTable dataTable = new DataTable();
+
+            try
+            {
+                connection = new SqlConnection(connectionString);
+                connection.Open();
+
+                SqlCommand command = new SqlCommand("SaveLogDetails", connection)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+                command.Parameters.Add(new SqlParameter("@logId", item.LogId));
+                command.Parameters.Add(new SqlParameter("@logName", item.LogName.Trim()));
+                command.Parameters.Add(new SqlParameter("@ptypeUrl", item.ProtoPayloadTypeUrl.Trim()));
+                command.Parameters.Add(new SqlParameter("@pvalue", item.ProtoPayloadValue.Trim()));
+                command.Parameters.Add(new SqlParameter("@recieve", Convert.ToDateTime(item.RecieveTimestamp)));
+                command.Parameters.Add(new SqlParameter("@severity", item.Severity.Trim()));
+                command.Parameters.Add(new SqlParameter("@logTimestamp", Convert.ToDateTime(item.LogTimestamp)));
+
+                dataTable.Load(command.ExecuteReader());
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    connection.Close();
+                }
+            }
+        }
+
+        private LogViewModel SaveLogs(LogViewModel item)
+        {
+            LogViewModel result = new LogViewModel();
+
+            SqlConnection connection = null;
+            DataTable dataTable = new DataTable();
+
+            try
+            {
+                connection = new SqlConnection(connectionString);
+                connection.Open();
+
+                SqlCommand command = new SqlCommand("SaveLog", connection)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+                command.Parameters.Add(new SqlParameter("@insertId", item.InsertId.Trim()));
+
+                dataTable.Load(command.ExecuteReader());
+                if (dataTable != null || dataTable.Rows.Count > 0)
+                {
+                    result.LogId = Convert.ToInt32(dataTable.Rows[0][0]);
+                    result.InsertId = dataTable.Rows[0][1].ToString();
+                    result.IsNew = Convert.ToBoolean(dataTable.Rows[0][2]);
+                }
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    connection.Close();
                 }
             }
 
-            MessageBox.Show("{0} logs updated");
+            return result;
         }
 
         private void converted(byte[] protoPayloadValue)
