@@ -33,9 +33,42 @@ namespace CloudLog
             string value = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
 
             InitializeComponent();
-
             Configuration();
+            RetrieveCloudLog();
+            LoadGridData();
+           
+        }
 
+        private void LoadGridData()
+        {
+            SqlConnection connection = null;
+            DataTable dataTable = new DataTable();
+
+            try
+            {
+                connection = new SqlConnection(connectionString);
+                connection.Open();
+
+                SqlCommand command = new SqlCommand("LogsRetrieve", connection)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+
+                dataTable.Load(command.ExecuteReader());
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    connection.Close();
+                }
+            }
+
+            ddgDefault.DataSource = dataTable;
+        }
+
+        private void RetrieveCloudLog()
+        {
             List<LogViewModel> logs = new List<LogViewModel>();
             Dictionary<string, string> resources = new Dictionary<string, string>();
 
@@ -55,6 +88,7 @@ namespace CloudLog
                 {
                     try
                     {
+
                         LogViewModel log = new LogViewModel
                         {
                             InsertId = item.InsertId,
@@ -119,6 +153,7 @@ namespace CloudLog
                     LogViewModel log = SaveLogs(item);
                     if (log.IsNew)
                     {
+                        item.LogId = log.LogId;
                         SaveLogDetails(item);
                         SaveLogResources(item);
                     }
@@ -127,7 +162,7 @@ namespace CloudLog
                         addedCount++;
                     }
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     MessageBox.Show(string.Format("error while saving log id {0}", item.InsertId));
                 }
@@ -154,7 +189,9 @@ namespace CloudLog
                         {
                             CommandType = CommandType.StoredProcedure
                         };
-                        command.Parameters.Add(new SqlParameter("@insertId", item.InsertId.Trim()));
+                        command.Parameters.Add(new SqlParameter("@logId", item.LogId));
+                        command.Parameters.Add(new SqlParameter("@rkey", resource.Key.Trim()));
+                        command.Parameters.Add(new SqlParameter("@rvalue", resource.Value.Trim()));
 
                         dataTable.Load(command.ExecuteReader());
                     }
@@ -188,9 +225,9 @@ namespace CloudLog
                 command.Parameters.Add(new SqlParameter("@logName", item.LogName.Trim()));
                 command.Parameters.Add(new SqlParameter("@ptypeUrl", item.ProtoPayloadTypeUrl.Trim()));
                 command.Parameters.Add(new SqlParameter("@pvalue", item.ProtoPayloadValue.Trim()));
-                command.Parameters.Add(new SqlParameter("@recieve", Convert.ToDateTime(item.RecieveTimestamp)));
+                command.Parameters.Add(new SqlParameter("@recieve", item.RecieveTimestamp.ToDateTime()));
                 command.Parameters.Add(new SqlParameter("@severity", item.Severity.Trim()));
-                command.Parameters.Add(new SqlParameter("@logTimestamp", Convert.ToDateTime(item.LogTimestamp)));
+                command.Parameters.Add(new SqlParameter("@logTimestamp", item.LogTimestamp.ToDateTime()));
 
                 dataTable.Load(command.ExecuteReader());
             }
