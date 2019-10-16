@@ -15,6 +15,7 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using System.Data.SqlClient;
+using ProtoBuf;
 
 namespace CloudLog
 {
@@ -25,7 +26,7 @@ namespace CloudLog
         string connectionString;
         string projectId;
         string resourceName;
-        string filter; 
+        string filter;
         string orderBy;
 
         public Form1()
@@ -33,10 +34,102 @@ namespace CloudLog
             string value = Environment.GetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS");
 
             InitializeComponent();
+            this.ddgDefault.CellClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.ddgDefault_cellclick);
+            txtInsertId.ReadOnly = true;
+            txtLogId.ReadOnly = true;
+            txtLogName.ReadOnly = true;
+            txtLogTimstamp.ReadOnly = true;
+            txtProtoBType.ReadOnly = true;
+            txtProtoBValue.ReadOnly = true;
+            txtRecieveDate.ReadOnly = true;
+            txtSeverity.ReadOnly = true;
+
             Configuration();
             RetrieveCloudLog();
             LoadGridData();
-           
+
+        }
+
+        private void ddgDefault_cellclick(object sender, DataGridViewCellEventArgs e)
+        {
+            int logId = Convert.ToInt32(ddgDefault.SelectedRows[0].Cells[1].Value);
+            if (logId > 0)
+            {
+                RetrieveLogById(logId);
+                RetrieveResourceById(logId);
+            }
+
+        }
+
+        private void RetrieveResourceById(int logId)
+        {
+            SqlConnection connection = null;
+            DataTable dataTable = new DataTable();
+
+            try
+            {
+                connection = new SqlConnection(connectionString);
+                connection.Open();
+
+                SqlCommand command = new SqlCommand("LogsResourceRetrieve", connection)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+                command.Parameters.Add(new SqlParameter("@logId", logId));
+
+                dataTable.Load(command.ExecuteReader());
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    connection.Close();
+                }
+            }
+
+            if (dataTable != null || dataTable.Rows.Count > 0)
+            {
+                ddgResource.DataSource = dataTable;
+            }
+        }
+
+        private void RetrieveLogById(int logId)
+        {
+            SqlConnection connection = null;
+            DataTable dataTable = new DataTable();
+
+            try
+            {
+                connection = new SqlConnection(connectionString);
+                connection.Open();
+
+                SqlCommand command = new SqlCommand("LogsDetailsRetrieve", connection)
+                {
+                    CommandType = CommandType.StoredProcedure
+                };
+                command.Parameters.Add(new SqlParameter("@logId", logId));
+
+                dataTable.Load(command.ExecuteReader());
+            }
+            finally
+            {
+                if (connection != null)
+                {
+                    connection.Close();
+                }
+            }
+
+            if (dataTable != null || dataTable.Rows.Count > 0)
+            {
+                txtInsertId.Text = dataTable.Rows[0][1].ToString();
+                txtLogId.Text = dataTable.Rows[0][0].ToString();
+                txtLogName.Text = dataTable.Rows[0][2].ToString();
+                txtLogTimstamp.Text = dataTable.Rows[0][7].ToString();
+                txtProtoBType.Text = dataTable.Rows[0][3].ToString();
+                txtProtoBValue.Text = dataTable.Rows[0][4].ToString();
+                txtRecieveDate.Text = dataTable.Rows[0][5].ToString();
+                txtSeverity.Text = dataTable.Rows[0][6].ToString();
+            }
         }
 
         private void LoadGridData()
@@ -64,7 +157,23 @@ namespace CloudLog
                 }
             }
 
-            ddgDefault.DataSource = dataTable;
+            if (dataTable != null || dataTable.Rows.Count > 0)
+            {
+                ddgDefault.DataSource = dataTable;
+                AddButtonToGrid();
+            }
+        }
+
+        private void AddButtonToGrid()
+        {
+            this.ddgDefault.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+            this.ddgDefault.MultiSelect = false;
+            var buttonCol = new DataGridViewButtonColumn(); // The button to display a particular cell value when clicks//
+            buttonCol.Name = "ButtonColumnName";
+            buttonCol.HeaderText = "Show";
+            buttonCol.Text = "View";
+            buttonCol.UseColumnTextForButtonValue = true;
+            ddgDefault.Columns.Add(buttonCol);
         }
 
         private void RetrieveCloudLog()
@@ -88,6 +197,30 @@ namespace CloudLog
                 {
                     try
                     {
+                        ////convert protocol buffer method 1
+                        //ProtoPayload serlizedPerson;
+                        //var by = item.ProtoPayload.Value.ToArray();
+                        //using (var stream = new MemoryStream(by))
+                        //{
+                        //    serlizedPerson = Serializer.Deserialize<ProtoPayload>(stream);
+                        //}
+
+                        ////convert protocol buffer method 2
+                        //if (File.Exists("test.bin"))
+                        //{
+                        //    File.Delete("test.bin");
+                        //}
+
+                        //using (var fs = File.Create("test.bin"))
+                        //{
+                        //    Serializer.Serialize(fs, item.ProtoPayload.Value);
+                        //}
+
+                        //using (var fs = File.OpenRead("test.bin"))
+                        //{
+                        //    serlizedPerson = Serializer.Deserialize<ProtoPayload>(fs);
+                        //    // do something with person
+                        //}
 
                         LogViewModel log = new LogViewModel
                         {
@@ -277,6 +410,24 @@ namespace CloudLog
             return result;
         }
 
+        public static T ProtoDeserialize<T>(byte[] data) where T : class
+        {
+            if (null == data) return null;
+
+            try
+            {
+                using (var stream = new MemoryStream(data))
+                {
+                    return Serializer.Deserialize<T>(stream);
+                }
+            }
+            catch
+            {
+                // Log error
+                throw;
+            }
+        }
+
         private void converted(byte[] protoPayloadValue)
         {
             byte[] bytes = protoPayloadValue; // A byte array contains non-ASCII (or non-readable) characters
@@ -324,5 +475,21 @@ namespace CloudLog
             }
             return null;
         }
+
+        private void btnRefresh_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show("System will be updated by google cloud log");
+
+            RetrieveCloudLog();
+            LoadGridData();
+        }
+
+        private void btnSearch_Click(object sender, EventArgs e)
+        {
+            Search search = new Search();
+            search.Show();
+        }
     }
+
+
 }
