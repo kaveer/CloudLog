@@ -16,6 +16,7 @@ using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using System.Data.SqlClient;
 using ProtoBuf;
+using System.Net.Mail;
 
 namespace CloudLog
 {
@@ -50,16 +51,16 @@ namespace CloudLog
 
         }
 
-        private void ddgDefault_cellclick(object sender, DataGridViewCellEventArgs e)
+        private void Configuration()
         {
-            int logId = Convert.ToInt32(ddgDefault.SelectedRows[0].Cells[1].Value);
-            if (logId > 0)
-            {
-                RetrieveLogById(logId);
-                RetrieveResourceById(logId);
-            }
-
+            connectionString = @"Data Source=DESKTOP-3KHTJ6N\SQLEXPRESS;Initial Catalog=CloudLog;Integrated Security=True";
+            projectId = "resolute-world-253406";
+            resourceName = string.Format("projects/{0}", projectId);
+            filter = "resource.type = \"gcs_bucket\"";
+            orderBy = "timestamp desc";
         }
+
+
 
         private void RetrieveResourceById(int logId)
         {
@@ -198,12 +199,12 @@ namespace CloudLog
                     try
                     {
                         ////convert protocol buffer method 1
-                        //ProtoPayload serlizedPerson;
-                        //var by = item.ProtoPayload.Value.ToArray();
-                        //using (var stream = new MemoryStream(by))
-                        //{
-                        //    serlizedPerson = Serializer.Deserialize<ProtoPayload>(stream);
-                        //}
+                        ProtoPayload serlizedPerson;
+                        var by = item.ProtoPayload.Value.ToArray();
+                        using (var stream = new MemoryStream(by))
+                        {
+                            serlizedPerson = Serializer.Deserialize<ProtoPayload>(stream);
+                        }
 
                         ////convert protocol buffer method 2
                         //if (File.Exists("test.bin"))
@@ -263,19 +264,19 @@ namespace CloudLog
                 if (logs.Count() > 0)
                 {
                     MessageBox.Show(string.Format("{0} logs will be processed to the system", logs.Count()));
+
+                    string insertId = string.Empty;
+                    foreach (var item in logs)
+                    {
+                        insertId = insertId + "\n" + item.InsertId;
+                    }
+                    string emailBody = GenarateEmailBody(insertId);
+                    SentMail(emailBody);
                     SaveToDatabase(logs);
                 }
             }
         }
 
-        private void Configuration()
-        {
-            connectionString = @"Data Source=DESKTOP-3KHTJ6N\SQLEXPRESS;Initial Catalog=CloudLog;Integrated Security=True";
-            projectId = "resolute-world-253406";
-            resourceName = string.Format("projects/{0}", projectId);
-            filter = "resource.type = \"gcs_bucket\"";
-            orderBy = "timestamp desc";
-        }
 
         private void SaveToDatabase(List<LogViewModel> logs)
         {
@@ -410,6 +411,33 @@ namespace CloudLog
             return result;
         }
 
+        //button and event handler
+        private void ddgDefault_cellclick(object sender, DataGridViewCellEventArgs e)
+        {
+            int logId = Convert.ToInt32(ddgDefault.SelectedRows[0].Cells[1].Value);
+            if (logId > 0)
+            {
+                RetrieveLogById(logId);
+                RetrieveResourceById(logId);
+            }
+
+        }
+
+        private void btnRefresh_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show("System will be updated by google cloud log");
+
+            RetrieveCloudLog();
+            LoadGridData();
+        }
+
+        private void btnSearch_Click(object sender, EventArgs e)
+        {
+            Search search = new Search();
+            search.Show();
+        }
+
+        //Attempts to deserialize protocol buffer by google 
         public static T ProtoDeserialize<T>(byte[] data) where T : class
         {
             if (null == data) return null;
@@ -476,19 +504,35 @@ namespace CloudLog
             return null;
         }
 
-        private void btnRefresh_Click(object sender, EventArgs e)
+        private void SentMail(string emailBody)
         {
-            MessageBox.Show("System will be updated by google cloud log");
-
-            RetrieveCloudLog();
-            LoadGridData();
+            SmtpClient SmtpServer = new SmtpClient("smtp.live.com");
+            var mail = new MailMessage();
+            mail.From = new MailAddress("kaveer.rajcoomar@hotmail.com");
+            mail.To.Add("kaveer.rajcoomar@hotmail.com");
+            mail.Subject = "API security dissertation";
+            mail.IsBodyHtml = true;
+            string htmlBody;
+            htmlBody = emailBody;
+            mail.Body = htmlBody;
+            SmtpServer.Port = 587;
+            SmtpServer.UseDefaultCredentials = false;
+            SmtpServer.Credentials = new System.Net.NetworkCredential("", "");
+            SmtpServer.EnableSsl = true;
+            SmtpServer.Send(mail);
         }
 
-        private void btnSearch_Click(object sender, EventArgs e)
+        private string GenarateEmailBody(string insertId)
         {
-            Search search = new Search();
-            search.Show();
+            string result = string.Empty;
+
+            result = "the follwing id will be proceed by the system";
+            result = result + "\n" + insertId + "\n";
+
+            return result;
         }
+
+
     }
 
 
